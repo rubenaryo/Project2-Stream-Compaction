@@ -19,7 +19,13 @@ namespace StreamCompaction {
          */
         void scan(int n, int *odata, const int *idata) {
             timer().startCpuTimer();
-            // TODO
+
+            odata[0] = idata[0];
+            for (int k = 1; k < n; ++k)
+            {
+                odata[k] = odata[k - 1] + idata[k];
+            }
+
             timer().endCpuTimer();
         }
 
@@ -30,7 +36,7 @@ namespace StreamCompaction {
          */
         int compactWithoutScan(int n, int *odata, const int *idata) {
             timer().startCpuTimer();
-            // TODO
+            
             timer().endCpuTimer();
             return -1;
         }
