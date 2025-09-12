@@ -14,17 +14,36 @@ namespace StreamCompaction {
             return timer;
         }
 
-        __global__ void kernNaiveScan(int *w, const int *r, int N, int idx_start)
+        __device__ inline void dev_swap(int*& a, int*& b)
+        {
+            int* temp = a;
+            a = b;
+            b = temp;
+        }
+
+        __global__ void kernNaiveScan(int *w, int *r, int N, int stages, int* odata)
         {
             int k = (blockIdx.x * blockDim.x) + threadIdx.x;
             if (k >= N)
                 return;
 
-            if (k >= idx_start)
+            int offset = 1;
+            for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
             {
-                w[k] = r[k - idx_start] + r[k];
-                int stub = 42;
+                if (k >= offset)
+                {
+                    w[k] = r[k - offset] + r[k];
+                }
+                else
+                {
+                    w[k] = r[k];
+                }
+
+                dev_swap(w, r);
             }
+
+            // At return, r contains the final result due to the swap
+            odata[k] = r[k];
         }
 
         /**
@@ -46,17 +65,15 @@ namespace StreamCompaction {
             // A will be the read buffer for the first pass
             cudaMemcpy((void*)dev_A, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice);
 
-            int idx_start = 1;
             timer().startGpuTimer();         
-            for (int stage = 1; stage <= stages; ++stage)
-            {
-                kernNaiveScan<<<fullBlocksPerGrid, BLOCK_SIZE>>>(dev_B, dev_A, N, idx_start);
-                idx_start <<= 1;
-                std::swap(dev_A, dev_B); // bing bong
-            }
+            kernNaiveScan<<<fullBlocksPerGrid, BLOCK_SIZE>>>(dev_B, dev_A, N, stages, dev_B);
             timer().endGpuTimer();
 
-            cudaMemcpy(odata, dev_A, sizeof(int) * n, cudaMemcpyDeviceToHost);
+            // Leave the first element empty for identity
+            cudaMemcpy((void*)&odata[1], (const void*)dev_B, sizeof(int) * (n-1), cudaMemcpyDeviceToHost);
+
+            // Identity
+            odata[0] = 0;
 
             cudaFree((void*)dev_A);
             cudaFree((void*)dev_B);
