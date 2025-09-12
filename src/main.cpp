@@ -47,12 +47,19 @@ int main(int argc, char* argv[]) {
     printArray(NPOT, c, true);
     printCmpResult(NPOT, b, c);
 
+
+    int testArr[] = {0, 1, 2, 3, 4, 5, 6, 7};
+    int soln[8];
+    StreamCompaction::CPU::scan(8, soln, testArr);
+    int output[8];
     zeroArray(SIZE, c);
     printDesc("naive scan, power-of-two");
-    StreamCompaction::Naive::scan(SIZE, c, a);
+    StreamCompaction::Naive::scan(8, output, testArr);
     printElapsedTime(StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(SIZE, c, true);
-    printCmpResult(SIZE, b, c);
+    printArray(8, soln);
+    printArray(8, output);
+    printCmpResult(SIZE, soln, output);
 
     /* For bug-finding only: Array of 1s to help find bugs in stream compaction or scan
     onesArray(SIZE, c);
@@ -62,10 +69,10 @@ int main(int argc, char* argv[]) {
 
     zeroArray(SIZE, c);
     printDesc("naive scan, non-power-of-two");
-    StreamCompaction::Naive::scan(NPOT, c, a);
-    printElapsedTime(StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
+    //StreamCompaction::Naive::scan(NPOT, c, a);
+    //printElapsedTime(StreamCompaction::Naive::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(SIZE, c, true);
-    printCmpResult(NPOT, b, c);
+    //printCmpResult(NPOT, b, c);
 
     zeroArray(SIZE, c);
     printDesc("work-efficient scan, power-of-two");
