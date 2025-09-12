@@ -51,7 +51,7 @@ namespace StreamCompaction {
          */
         void scan(int n, int *odata, const int *idata) {
             
-            const int BLOCK_SIZE = 8;
+            const int BLOCK_SIZE = 128;
             dim3 fullBlocksPerGrid((n + BLOCK_SIZE - 1) / BLOCK_SIZE);
             int stages = ilog2ceil(n);
             int N = 1 << stages; // next available power of two for N
