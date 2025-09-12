@@ -21,29 +21,20 @@ namespace StreamCompaction {
             b = temp;
         }
 
-        __global__ void kernNaiveScan(int *w, int *r, int N, int stages, int* odata)
+        __global__ void kernNaiveScan(int *w, int *r, int N, int stages, int offset)
         {
             int k = (blockIdx.x * blockDim.x) + threadIdx.x;
             if (k >= N)
                 return;
 
-            int offset = 1;
-            for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
+            if (k >= offset)
             {
-                if (k >= offset)
-                {
-                    w[k] = r[k - offset] + r[k];
-                }
-                else
-                {
-                    w[k] = r[k];
-                }
-
-                dev_swap(w, r);
+                w[k] = r[k - offset] + r[k];
             }
-
-            // At return, r contains the final result due to the swap
-            odata[k] = r[k];
+            else
+            {
+                w[k] = r[k];
+            }
         }
 
         /**
@@ -51,12 +42,24 @@ namespace StreamCompaction {
          */
         void scan(int n, int *odata, const int *idata) {
             
-            const int BLOCK_SIZE = 128;
-            dim3 fullBlocksPerGrid((n + BLOCK_SIZE - 1) / BLOCK_SIZE);
             int stages = ilog2ceil(n);
             int N = 1 << stages; // next available power of two for N
             assert(stages == ilog2(N));
+            int deviceMaxThreadsPerBlock = 1024;
+            int deviceNumber;
+            
+            if (cudaGetDevice(&deviceNumber) != cudaSuccess)
+            {
+                printf("CUDA: Failed to get Device Number\n");
+            }
 
+            if (cudaDeviceGetAttribute(&deviceMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, deviceNumber) != cudaSuccess)
+            {
+                printf("CUDA: Failed to get thread count per block\n");
+            }
+
+            const int BLOCK_SIZE = std::min(N, deviceMaxThreadsPerBlock);
+            dim3 fullBlocksPerGrid((N + BLOCK_SIZE - 1) / BLOCK_SIZE);
             // Alloc two device ping pong buffers, one for read and one for write
             int *dev_A, *dev_B;
             cudaMalloc((void**)&dev_A, sizeof(int) * N);
@@ -66,11 +69,18 @@ namespace StreamCompaction {
             cudaMemcpy((void*)dev_A, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice);
 
             timer().startGpuTimer();         
-            kernNaiveScan<<<fullBlocksPerGrid, BLOCK_SIZE>>>(dev_B, dev_A, N, stages, dev_B);
+
+            int offset = 1;
+            for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
+            {
+                kernNaiveScan<<<fullBlocksPerGrid, BLOCK_SIZE>>>(dev_B, dev_A, N, stages, offset);
+                cudaDeviceSynchronize();
+                std::swap(dev_A, dev_B);
+            }
             timer().endGpuTimer();
 
             // Leave the first element empty for identity
-            cudaMemcpy((void*)&odata[1], (const void*)dev_B, sizeof(int) * (n-1), cudaMemcpyDeviceToHost);
+            cudaMemcpy((void*)&odata[1], (const void*)dev_A, sizeof(int) * (n-1), cudaMemcpyDeviceToHost);
 
             // Identity
             odata[0] = 0;
