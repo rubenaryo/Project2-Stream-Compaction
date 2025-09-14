@@ -12,13 +12,69 @@ namespace StreamCompaction {
             return timer;
         }
 
+        __global__ void kernUpSweep(int N, int *x, int offset)
+        {
+            int nextOffset = offset << 1;
+            int k = ((blockIdx.x * blockDim.x) + threadIdx.x) * nextOffset;
+            if (k >= (N-1))
+                return;
+
+            int writeIdx = k + nextOffset - 1;
+            int readLeft = k + offset - 1;
+            int readRight = k + nextOffset - 1;
+
+            x[k + nextOffset - 1] = x[k + offset - 1] + x[k + nextOffset - 1];
+        }
+
         /**
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
         void scan(int n, int *odata, const int *idata) {
+
+            int stages = ilog2ceil(n);
+            int N = 1 << stages; // next available power of two for N
+            int deviceMaxThreadsPerBlock = 1024;
+            int deviceNumber = 0;
+
+            int *dev_x;
+            if (cudaMalloc((void**)&dev_x, sizeof(int) * N) != cudaSuccess)
+            {
+                printf("CUDA: Fatal Error, failed to allocate dev_x");
+                return;
+            }
+
+            cudaMemset(dev_x, -1, sizeof(int) * N);
+            if (cudaMemcpy((void*)dev_x, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice) != cudaSuccess)
+            {
+                printf("CUDA: Fatal Error, failed to copy idata to dev_x");
+                return;
+            }
+
+            if (cudaGetDevice(&deviceNumber) != cudaSuccess)
+            {
+                printf("CUDA: Failed to get Device Number, defaulting to 0...\n");
+            }
+
+            if (cudaDeviceGetAttribute(&deviceMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, deviceNumber) != cudaSuccess)
+            {
+                printf("CUDA: Failed to get thread count per block, defaulting to 1024...\n");
+            }
+
+            const int BLOCK_SIZE = std::min(N, deviceMaxThreadsPerBlock);
+            dim3 fullBlocksPerGrid((N + BLOCK_SIZE - 1) / BLOCK_SIZE);
+
             timer().startGpuTimer();
-            // TODO
+            
+            int offset = 1;
+            for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
+            {
+                kernUpSweep<<<fullBlocksPerGrid, BLOCK_SIZE>>>(N, dev_x, offset);
+                cudaDeviceSynchronize();
+            }
+
             timer().endGpuTimer();
+
+            cudaFree(dev_x);
         }
 
         /**
