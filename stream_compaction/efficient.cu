@@ -19,11 +19,25 @@ namespace StreamCompaction {
             if (k >= (N-1))
                 return;
 
-            int writeIdx = k + nextOffset - 1;
-            int readLeft = k + offset - 1;
-            int readRight = k + nextOffset - 1;
+            int leftIdx = k + offset - 1;
+            int rightIdx = k + nextOffset - 1;
 
-            x[k + nextOffset - 1] = x[k + offset - 1] + x[k + nextOffset - 1];
+            x[rightIdx] = x[leftIdx] + x[rightIdx];
+        }
+
+        __global__ void kernDownSweep(int N, int* x, int offset)
+        {
+            int nextOffset = offset << 1;
+            int k = ((blockIdx.x * blockDim.x) + threadIdx.x) * nextOffset;
+            if (k >= (N - 1))
+                return;
+
+            int leftIdx = k + offset - 1;
+            int rightIdx = k + nextOffset - 1;
+
+            int t = x[leftIdx];
+            x[leftIdx] = x[rightIdx];
+            x[rightIdx] += t;
         }
 
         /**
@@ -65,14 +79,31 @@ namespace StreamCompaction {
 
             timer().startGpuTimer();
             
-            int offset = 1;
-            for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
+            int stage = 1, offset = 1;
+            for (; stage <= stages && offset < N; ++stage, offset <<= 1)
             {
                 kernUpSweep<<<fullBlocksPerGrid, BLOCK_SIZE>>>(N, dev_x, offset);
-                cudaDeviceSynchronize();
+            }
+            
+            cudaDeviceSynchronize();
+            
+            // Set root to 0
+            cudaMemset(&dev_x[n-1], 0, sizeof(int));
+
+            stage = ilog2(N) - 1;
+            for (; stage >= 0; --stage)
+            {
+                offset = 1 << stage;
+                kernDownSweep<<<fullBlocksPerGrid, BLOCK_SIZE>>>(N, dev_x, offset);
             }
 
             timer().endGpuTimer();
+
+            if (cudaMemcpy((void*)odata, (const void*)dev_x, sizeof(int) * n, cudaMemcpyDeviceToHost) != cudaSuccess)
+            {
+                printf("CUDA: Fatal Error, failed to copy dev_x to odata");
+                return;
+            }
 
             cudaFree(dev_x);
         }
