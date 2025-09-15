@@ -74,7 +74,12 @@ namespace StreamCompaction {
             int stage = 1, offset = 1;
             for (; stage <= stages && offset < N; ++stage, offset <<= 1)
             {
-                kernUpSweep<<<fullBlocksPerGrid, BLOCK_SIZE>>>(N, dev_x, offset);
+                int nextOffset = offset << 1;
+                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
+                int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
+                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+
+                kernUpSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
             }
             
             cudaDeviceSynchronize();
@@ -86,7 +91,11 @@ namespace StreamCompaction {
             for (; stage >= 0; --stage)
             {
                 offset = 1 << stage;
-                kernDownSweep<<<fullBlocksPerGrid, BLOCK_SIZE>>>(N, dev_x, offset);
+                int nextOffset = offset << 1;
+                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
+                int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
+                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+                kernDownSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
             }
 
             timer().endGpuTimer();
