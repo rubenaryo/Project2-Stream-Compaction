@@ -51,28 +51,20 @@ namespace StreamCompaction {
             int deviceNumber = 0;
 
             int *dev_x;
-            if (cudaMalloc((void**)&dev_x, sizeof(int) * N) != cudaSuccess)
-            {
-                printf("CUDA: Fatal Error, failed to allocate dev_x");
-                return;
-            }
+            cudaMalloc((void**)&dev_x, sizeof(int) * N);
+            checkCUDAError("CUDA: Fatal Error, failed to allocate dev_x");
 
-            cudaMemset(dev_x, -1, sizeof(int) * N);
-            if (cudaMemcpy((void*)dev_x, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice) != cudaSuccess)
-            {
-                printf("CUDA: Fatal Error, failed to copy idata to dev_x");
-                return;
-            }
+            cudaMemset(dev_x, 0, sizeof(int) * N);
+            checkCUDAError("CUDA: Error, failed to initialize dev_x");
 
-            if (cudaGetDevice(&deviceNumber) != cudaSuccess)
-            {
-                printf("CUDA: Failed to get Device Number, defaulting to 0...\n");
-            }
+            cudaMemcpy((void*)dev_x, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice);
+            checkCUDAError("CUDA: Fatal Error, failed to copy idata to dev_x");
 
-            if (cudaDeviceGetAttribute(&deviceMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, deviceNumber) != cudaSuccess)
-            {
-                printf("CUDA: Failed to get thread count per block, defaulting to 1024...\n");
-            }
+            cudaGetDevice(&deviceNumber);
+            checkCUDAError("CUDA: Failed to get Device Number, defaulting to 0...\n");
+
+            cudaDeviceGetAttribute(&deviceMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, deviceNumber);
+            checkCUDAError("CUDA: Failed to get thread count per block, defaulting to 1024...\n");
 
             const int BLOCK_SIZE = std::min(N, deviceMaxThreadsPerBlock);
             dim3 fullBlocksPerGrid((N + BLOCK_SIZE - 1) / BLOCK_SIZE);
@@ -99,11 +91,8 @@ namespace StreamCompaction {
 
             timer().endGpuTimer();
 
-            if (cudaMemcpy((void*)odata, (const void*)dev_x, sizeof(int) * n, cudaMemcpyDeviceToHost) != cudaSuccess)
-            {
-                printf("CUDA: Fatal Error, failed to copy dev_x to odata");
-                return;
-            }
+            cudaMemcpy((void*)odata, (const void*)dev_x, sizeof(int) * n, cudaMemcpyDeviceToHost);
+            checkCUDAError("CUDA: Fatal Error, failed to copy dev_x to odata");
 
             cudaFree(dev_x);
         }
