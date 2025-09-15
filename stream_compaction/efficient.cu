@@ -80,7 +80,7 @@ namespace StreamCompaction {
             cudaDeviceSynchronize();
             
             // Set root to 0
-            cudaMemset(&dev_x[n-1], 0, sizeof(int));
+            cudaMemset(&dev_x[N-1], 0, sizeof(int));
 
             stage = ilog2(N) - 1;
             for (; stage >= 0; --stage)
