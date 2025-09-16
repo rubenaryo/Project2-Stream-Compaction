@@ -40,6 +40,7 @@ This version is vastly superior to the naive approach, as it avoids the increase
 | ![](img/upsweep.png) | ![](img/downsweep.png) |
 |:--:                  |:--:                    |
 | Up-Sweep             |  Down-Sweep            |
+
 *From CIS5650 at the University of Pennsylvania*
 
 ### Thrust Scan Implementation
