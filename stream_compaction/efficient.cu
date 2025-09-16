@@ -116,9 +116,32 @@ namespace StreamCompaction {
          * @returns      The number of elements remaining after compaction.
          */
         int compact(int n, int *odata, const int *idata) {
+            
+            int deviceMaxThreadsPerBlock = 1024;
+            int deviceNumber = 0;
+
+            int* dev_bools;
+            int* dev_idata;
+
+            int N = 1 << ilog2ceil(n); // next available power of two for n
+            cudaMalloc(&dev_bools, sizeof(int) * N);
+            cudaMalloc(&dev_idata, sizeof(int) * N);
+
+            cudaMemset(dev_idata, 0, sizeof(int) * N);
+            cudaMemcpy(dev_idata, idata, sizeof(int) * n, cudaMemcpyHostToDevice);
+            
             timer().startGpuTimer();
-            // TODO
+
+            int numThreads = N;
+            int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
+            dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+            Common::kernMapToBoolean<<<blocksPerGrid, blockSize>>>(N, dev_bools, dev_idata);
+
+
             timer().endGpuTimer();
+
+            cudaFree(dev_bools);
+            cudaFree(dev_idata);
             return -1;
         }
     }
