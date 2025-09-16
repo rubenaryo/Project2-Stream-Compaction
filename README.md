@@ -40,7 +40,7 @@ This version is vastly superior to the naive approach, as it avoids the increase
 | ![](img/upsweep.png) | ![](img/downsweep.png) |
 |:--:                  |:--:                    |
 | Up-Sweep             |  Down-Sweep            
-<p style="text-align: center;"><i>From CIS5650 at the University of Pennsylvania</i></p>
+*From CIS5650 at the University of Pennsylvania*</i></p>*
 
 
 ## Performance Analysis
@@ -56,8 +56,21 @@ Testing different block sizes up to CUDA's 1024 maximum shows no significant dif
 | 512        | 27.90        | 27.43            | 10.63                 | 9.71                      |
 | 1024       | 27.47        | 26.83            | 9.84                  | 10.28                     |
 
-<p style="text-align: center;font-size:80%">
-Results are in milliseconds, lower is better. <br>
+*Results are in milliseconds, lower is better. <br>
 Tested with N = 2<sup>26</sup> (~67M) 4-byte integers. <br>
-Non-POW2 with N - 3.
-</p>
+Non-POW2 tested with N - 3.*
+
+### Scan
+
+Measuring Scan performance yielded some interesting insights. Despite the naive method's drawbacks, I did not expect that it would be so consistently beaten by the sequential CPU approach even at high N's. This goes to show the severity of multiplying the number of additions by log(n) at higher element counts. 
+
+
+
+![](img/scanchart.png)
+
+|                | 2²⁰  | 2²¹  | 2²²  | 2²³  | 2²⁴  | 2²⁵   | 2²⁶   | 2²⁷   |
+| -------------- | ---- | ---- | ---- | ---- | ---- | ----- | ----- | ----- |
+| Naive          | 0.37 | 0.42 | 0.62 | 2.34 | 6.63 | 12.90 | 26.92 | 54.34 |
+| CPU            | 0.30 | 0.59 | 1.12 | 2.48 | 4.98 | 9.74  | 19.79 | 39.49 |
+| Work-Efficient | 0.32 | 0.42 | 0.44 | 0.73 | 1.41 | 5.64  | 10.85 | 19.98 |
+| Thrust         | 0.43 | 0.55 | 0.40 | 0.53 | 1.07 | 1.03  | 1.57  | 2.51  |
