@@ -30,6 +30,9 @@ inline int ilog2ceil(int x) {
     return x == 1 ? 0 : ilog2(x - 1) + 1;
 }
 
+static const int CUDA_MAX_THREADS_PER_BLOCK = 1024; // Assumption
+
+
 namespace StreamCompaction {
     namespace Common {
         __global__ void kernMapToBoolean(int n, int *bools, const int *idata);

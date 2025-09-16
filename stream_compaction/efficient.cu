@@ -3,6 +3,8 @@
 #include "common.h"
 #include "efficient.h"
 
+#include <assert.h>
+
 namespace StreamCompaction {
     namespace Efficient {
         using StreamCompaction::Common::PerformanceTimer;
@@ -40,6 +42,42 @@ namespace StreamCompaction {
             x[rightIdx] += t;
         }
 
+        __host__ void runScan(int N, int *dev_x)
+        {
+            #if !NDEBUG
+            assert(N % 2 == 0); // At this point we assume we are working with powers of two
+            #endif
+
+            int stages = ilog2(N);
+
+            int stage = 1, offset = 1;
+            for (; stage <= stages && offset < N; ++stage, offset <<= 1)
+            {
+                int nextOffset = offset << 1;
+                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
+                int blockSize = std::min(numThreads, CUDA_MAX_THREADS_PER_BLOCK);
+                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+
+                kernUpSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
+            }
+
+            cudaDeviceSynchronize();
+
+            // Set root to 0
+            cudaMemset(&dev_x[N - 1], 0, sizeof(int));
+
+            stage = ilog2(N) - 1;
+            for (; stage >= 0; --stage)
+            {
+                offset = 1 << stage;
+                int nextOffset = offset << 1;
+                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
+                int blockSize = std::min(numThreads, CUDA_MAX_THREADS_PER_BLOCK);
+                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+                kernDownSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
+            }
+        }
+
         /**
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
@@ -47,9 +85,7 @@ namespace StreamCompaction {
 
             int stages = ilog2ceil(n);
             int N = 1 << stages; // next available power of two for N
-            int deviceMaxThreadsPerBlock = 1024;
-            int deviceNumber = 0;
-
+            
             int *dev_x;
             cudaMalloc((void**)&dev_x, sizeof(int) * N);
             checkCUDAError("CUDA: Fatal Error, failed to allocate dev_x");
@@ -60,43 +96,9 @@ namespace StreamCompaction {
             cudaMemcpy((void*)dev_x, (const void*)idata, sizeof(int) * n, cudaMemcpyHostToDevice);
             checkCUDAError("CUDA: Fatal Error, failed to copy idata to dev_x");
 
-            cudaGetDevice(&deviceNumber);
-            checkCUDAError("CUDA: Failed to get Device Number, defaulting to 0...\n");
-
-            cudaDeviceGetAttribute(&deviceMaxThreadsPerBlock, cudaDevAttrMaxThreadsPerBlock, deviceNumber);
-            checkCUDAError("CUDA: Failed to get thread count per block, defaulting to 1024...\n");
-
-            const int BLOCK_SIZE = std::min(N, deviceMaxThreadsPerBlock);
-            dim3 fullBlocksPerGrid((N + BLOCK_SIZE - 1) / BLOCK_SIZE);
-
             timer().startGpuTimer();
             
-            int stage = 1, offset = 1;
-            for (; stage <= stages && offset < N; ++stage, offset <<= 1)
-            {
-                int nextOffset = offset << 1;
-                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
-                int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
-                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
-
-                kernUpSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
-            }
-            
-            cudaDeviceSynchronize();
-            
-            // Set root to 0
-            cudaMemset(&dev_x[N-1], 0, sizeof(int));
-
-            stage = ilog2(N) - 1;
-            for (; stage >= 0; --stage)
-            {
-                offset = 1 << stage;
-                int nextOffset = offset << 1;
-                int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
-                int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
-                dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
-                kernDownSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
-            }
+            runScan(N, dev_x);
 
             timer().endGpuTimer();
 
