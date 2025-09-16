@@ -36,7 +36,15 @@ namespace StreamCompaction {
          */
         __global__ void kernScatter(int n, int *odata,
                 const int *idata, const int *bools, const int *indices) {
-            // TODO
+            
+            int k = (blockIdx.x * blockDim.x) + threadIdx.x;
+            if (k >= n)
+                return;
+
+            if (bools[k])
+            {
+                odata[indices[k]] = idata[k];
+            }
         }
 
     }

@@ -122,27 +122,53 @@ namespace StreamCompaction {
 
             int* dev_bools;
             int* dev_idata;
+            int* dev_odata;
+            int* dev_indices;
 
             int N = 1 << ilog2ceil(n); // next available power of two for n
             cudaMalloc(&dev_bools, sizeof(int) * N);
+            cudaMalloc(&dev_indices, sizeof(int) * N);
             cudaMalloc(&dev_idata, sizeof(int) * N);
+            cudaMalloc(&dev_odata, sizeof(int) * N);
 
             cudaMemset(dev_idata, 0, sizeof(int) * N);
+            cudaMemset(dev_indices, 0, sizeof(int) * N);
+            cudaMemset(dev_odata, 0, sizeof(int) * N);
+            cudaMemset(dev_bools, 0, sizeof(int) * N);
             cudaMemcpy(dev_idata, idata, sizeof(int) * n, cudaMemcpyHostToDevice);
             
             timer().startGpuTimer();
 
             int numThreads = N;
             int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
-            dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
+            dim3 blocksPerGrid((N + blockSize - 1) / blockSize);
+
+            // Create bool array
             Common::kernMapToBoolean<<<blocksPerGrid, blockSize>>>(N, dev_bools, dev_idata);
 
+            
+            // Copy the result of the bool array to the indices array so we can run scan on it.
+            cudaMemcpy(dev_indices, dev_bools, sizeof(int) * N, cudaMemcpyDeviceToDevice);
+            
+            // indices contains the bools, run scan in-place.
+            runScan(N, dev_indices);
+            // Pull result from finished scan
+            int numNonZero = -1;
+            cudaMemcpy(&numNonZero, &dev_indices[N - 1], sizeof(int), cudaMemcpyDeviceToHost);
 
+            //numThreads = numNonZero;
+            //blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
+            //blocksPerGrid = dim3(numNonZero + blockSize - 1 / blockSize);
+            Common::kernScatter<<<blocksPerGrid, blockSize>>>(N, dev_odata, dev_idata, dev_bools, dev_indices);
             timer().endGpuTimer();
+
+            cudaMemcpy(odata, dev_odata, sizeof(int) * n, cudaMemcpyDeviceToHost);
 
             cudaFree(dev_bools);
             cudaFree(dev_idata);
-            return -1;
+            cudaFree(dev_odata);
+            cudaFree(dev_indices);
+            return numNonZero;
         }
     }
 }
