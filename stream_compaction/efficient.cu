@@ -146,21 +146,19 @@ namespace StreamCompaction {
             // Create bool array
             Common::kernMapToBoolean<<<blocksPerGrid, blockSize>>>(N, dev_bools, dev_idata);
 
-            
             // Copy the result of the bool array to the indices array so we can run scan on it.
             cudaMemcpy(dev_indices, dev_bools, sizeof(int) * N, cudaMemcpyDeviceToDevice);
             
             // indices contains the bools, run scan in-place.
             runScan(N, dev_indices);
+
+            // Scatter the final results, filtering out the non-zero's
+            Common::kernScatter<<<blocksPerGrid, blockSize>>>(N, dev_odata, dev_idata, dev_bools, dev_indices);
+            timer().endGpuTimer();
+
             // Pull result from finished scan
             int numNonZero = -1;
             cudaMemcpy(&numNonZero, &dev_indices[N - 1], sizeof(int), cudaMemcpyDeviceToHost);
-
-            //numThreads = numNonZero;
-            //blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
-            //blocksPerGrid = dim3(numNonZero + blockSize - 1 / blockSize);
-            Common::kernScatter<<<blocksPerGrid, blockSize>>>(N, dev_odata, dev_idata, dev_bools, dev_indices);
-            timer().endGpuTimer();
 
             cudaMemcpy(odata, dev_odata, sizeof(int) * n, cudaMemcpyDeviceToHost);
 
