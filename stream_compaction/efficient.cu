@@ -53,9 +53,9 @@ namespace StreamCompaction {
             {
                 int nextOffset = offset << 1;
                 int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
-                int blockSize = std::min(numThreads, CUDA_MAX_THREADS_PER_BLOCK);
+                int blockSize = std::min(numThreads, CUDA_BLOCK_SIZE);
                 dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
-
+                //printf("blockSize:%d|\tblocksPerGrid:%d\n", blockSize, blocksPerGrid.x);
                 kernUpSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
             }
 
@@ -70,7 +70,7 @@ namespace StreamCompaction {
                 offset = 1 << stage;
                 int nextOffset = offset << 1;
                 int numThreads = N / nextOffset; // N is guaranteed to be a power of two, and offset is a multiple of two.
-                int blockSize = std::min(numThreads, CUDA_MAX_THREADS_PER_BLOCK);
+                int blockSize = std::min(numThreads, CUDA_BLOCK_SIZE);
                 dim3 blocksPerGrid((numThreads + blockSize - 1) / blockSize);
                 kernDownSweep<<<blocksPerGrid, blockSize>>>(N, dev_x, offset);
             }
@@ -117,9 +117,6 @@ namespace StreamCompaction {
          */
         int compact(int n, int *odata, const int *idata) {
             
-            int deviceMaxThreadsPerBlock = 1024;
-            int deviceNumber = 0;
-
             int* dev_bools;
             int* dev_idata;
             int* dev_odata;
@@ -140,11 +137,10 @@ namespace StreamCompaction {
             timer().startGpuTimer();
 
             int numThreads = N;
-            int blockSize = std::min(numThreads, deviceMaxThreadsPerBlock);
-            dim3 blocksPerGrid((N + blockSize - 1) / blockSize);
+            dim3 blocksPerGrid((N + CUDA_BLOCK_SIZE - 1) / CUDA_BLOCK_SIZE);
 
             // Create bool array
-            Common::kernMapToBoolean<<<blocksPerGrid, blockSize>>>(N, dev_bools, dev_idata);
+            Common::kernMapToBoolean<<<blocksPerGrid, CUDA_BLOCK_SIZE >>>(N, dev_bools, dev_idata);
 
             // Copy the result of the bool array to the indices array so we can run scan on it.
             cudaMemcpy(dev_indices, dev_bools, sizeof(int) * N, cudaMemcpyDeviceToDevice);
@@ -153,7 +149,7 @@ namespace StreamCompaction {
             runScan(N, dev_indices);
 
             // Scatter the final results, filtering out the non-zero's
-            Common::kernScatter<<<blocksPerGrid, blockSize>>>(N, dev_odata, dev_idata, dev_bools, dev_indices);
+            Common::kernScatter<<<blocksPerGrid, CUDA_BLOCK_SIZE >>>(N, dev_odata, dev_idata, dev_bools, dev_indices);
             timer().endGpuTimer();
 
             // Pull result from finished scan

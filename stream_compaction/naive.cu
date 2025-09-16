@@ -74,7 +74,6 @@ namespace StreamCompaction {
             for (int stage = 1; stage <= stages && offset < N; ++stage, offset <<= 1)
             {
                 kernNaiveScan<<<fullBlocksPerGrid, BLOCK_SIZE>>>(dev_B, dev_A, N, stages, offset);
-                cudaDeviceSynchronize();
                 std::swap(dev_A, dev_B);
             }
             timer().endGpuTimer();

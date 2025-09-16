@@ -30,7 +30,7 @@ inline int ilog2ceil(int x) {
     return x == 1 ? 0 : ilog2(x - 1) + 1;
 }
 
-static const int CUDA_MAX_THREADS_PER_BLOCK = 1024; // Assumption
+static const int CUDA_BLOCK_SIZE = 512;
 
 
 namespace StreamCompaction {
