@@ -44,9 +44,7 @@ namespace StreamCompaction {
 
         __host__ void runScan(int N, int *dev_x)
         {
-            #if !NDEBUG
             assert(N % 2 == 0); // At this point we assume we are working with powers of two
-            #endif
 
             int stages = ilog2(N);
 
